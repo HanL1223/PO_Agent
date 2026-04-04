@@ -1,0 +1,48 @@
+#Pre commit Hooks
+#Run automatically before each git commit
+#Help capture issue early before code reach CICD
+# SETUP:
+#   pip install pre-commit
+#   pre-commit install          # Install hooks into .git/hooks
+#   pre-commit run --all-files  # Run on all files (first time)
+#
+# WHAT HAPPENS ON 'git commit':
+#   1. ruff-check: Lint Python code
+#   2. ruff-format: Check Python formatting
+#   3. mypy: Check Python types
+#   4. trailing-whitespace: Remove trailing spaces
+#   5. end-of-file-fixer: Ensure files end with newline
+#   6. check-yaml: Validate YAML syntax
+#   7. check-added-large-files: Prevent committing large files
+
+repos:
+  # --- General file checks ---
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-added-large-files
+        args: ['--maxkb=1000']
+      - id: check-merge-conflict
+      - id: debug-statements
+
+  # --- Python linting and formatting ---
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.7.0
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+
+  # --- Python type checking ---
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.12.0
+    hooks:
+      - id: mypy
+        additional_dependencies:
+          - pydantic>=2.9.0
+          - pydantic-settings>=2.6.0
+        args: [--ignore-missing-imports]
+        files: ^(src|backend)/

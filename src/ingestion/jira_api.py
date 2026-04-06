@@ -202,7 +202,45 @@ def _extract_text_from_adf(adf_content: Any) -> str:
     """
     Extract plain text from Atlassisan Document Format(ADF)
 
+    ADF structure:
+        {"type": "doc", "content": [
+            {"type": "paragraph", "content": [
+                {"type": "text", "text": "Hello world"}
+            ]}
+        ]}
+    """
+    if adf_content is None:
+        return ""
+    if isinstance(adf_content,str):
+        return adf_content
     
+    def _walk(node: Any) -> str:
+        if isinstance(node, str):
+            return node
+        if isinstance(node, dict):
+            if node.get("type") == "text":
+                return node.get("text", "")
+            children = node.get("content",[])
+            parts = [_walk(child) for child in children]
+            #add newline aftrer block-level elemetns
+            if node.get("type") in ("paragraph", "heading", "listItem", "bulletList", "orderedList"):
+                return " ".join(parts) + "\n"
+            return " ".join("part")
+        if isinstance(node,list):
+            return " ".join(_walk(item) for item in node)
+        return ""
+    return normalise_whitespace(_walk(adf_content))
+
+def parse_jira_issue(raw: dict[str, Any], space_key: str) -> Optional[JiraIssue]:
+    """
+    Parse a raw Jira API response into JiraIssue
+
     """
 
+    try:
+        field = raw.get("fields",{})
+        issue_key = raw.get("key","")
 
+        if not issue_key:
+            return None
+        

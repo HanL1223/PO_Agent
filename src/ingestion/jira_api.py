@@ -235,12 +235,103 @@ def parse_jira_issue(raw: dict[str, Any], space_key: str) -> Optional[JiraIssue]
     """
     Parse a raw Jira API response into JiraIssue
 
+    The Jira API returns a nested JSON structure:
+        {
+            "key": "CSCI-123",
+            "fields": {
+                "summary": "...",
+                "description": { ... ADF ... },
+                "issuetype": {"name": "Story"},
+                ...
+            }
+        }
+
+    We flatten this into domain model, extracting text from ADF
+    and normalising all fields.
     """
 
     try:
-        field = raw.get("fields",{})
+        fields = raw.get("fields",{})
         issue_key = raw.get("key","")
-
         if not issue_key:
             return None
+        summary = normalise_whitespace(fields.get("summary",""))
+        if not summary:
+            return None
+        
+        #Extract description
+        description = _extract_text_from_adf(fields.get("description"))
+        description = redact_pii(description) if description else None
+
+        # Extract acceptacne criteria (custom field - used for F06)
+        ac_raw = fields.get("customfield_10037")
+        acceptance_criteria = _extract_text_from_adf(ac_raw) if ac_raw else None
+
+        # Extract comments
+        comments_data= fields.get("comment",{})
+        comments_list = comments_data.get("comments", []) if isinstance(comments_data, dict) else []
+        comments = [
+            redact_pii(_extract_text_from_adf(c.get("body", "")))
+            for c in comments_list
+            if c.get("body")
+        ] or None
+
+        #Extract labels
+        labels = fields.get("labels") or None
+
+        # Extract priority
+        priority_obj = fields.get("priority")
+        priority = priority_obj.get("name") if isinstance(priority_obj, dict) else None
+
+        # Extract issue type
+        type_obj = fields.get("issuetype", {})
+        issue_type = type_obj.get("name", "Task") if isinstance(type_obj, dict) else "Task"
+
+        # Extract status
+        status_obj = fields.get("status", {})
+        status = status_obj.get("name", "Unknown") if isinstance(status_obj, dict) else "Unknown"
+
+
+        return JiraIssue(
+            issue_key=issue_key,
+            project_key=space_key,
+            issue_type=issue_type,
+            status=status,
+            summary = summary,
+            description=description,
+            acceptance_criteria=acceptance_criteria,
+            comments = comments,
+            labels = labels,
+            priority = priority,
+            raw = raw
+        )
+    except Exception as e:
+        logger.warning("parse_issue_failed", extra = {"key":raw.get("key","?"),"error":str(e)})
+        return None
+    
+
+#Live Ingestion Pipelien
+
+@dataclass
+class LiveIngestionConfig:
+    """
+    Configuration for live Jira ingestion.
+
+    Attributes:
+        space_key: Jira project key (e.g., "CSCI")
+        jql_filter: Additional JQL filter (appended to project filter)
+        since: Only fetch issues updated after this datetime (ISO format)
+        max_issues: Safety limit on total issues to fetch
+        ac_custom_field: Custom field ID for Acceptance Criteria
+    """
+
+    space_key: str
+    jql_filter: str = ""
+    since: Optional[str] = None
+    max_issues: int = 5000
+    ac_custom_field: str = "customfield_10037"
+
+
+        
+        
         

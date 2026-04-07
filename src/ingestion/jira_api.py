@@ -332,6 +332,136 @@ class LiveIngestionConfig:
     ac_custom_field: str = "customfield_10037"
 
 
+@dataclass
+class LiveIngestionResult:
+    """Statistics from a live ingestion run"""
+
+    space_key:str
+    issues_fetched:int = 0
+    issues_parsed:int = 0
+    issues_skipped: int = 0
+    sync_timestamp: str = ""
+    errors: list[str] = field(default_factory=list)
+
+
+def ingest_from_jira(
+        config:LiveIngestionConfig,
+        client:Optional[JiraAPIClient] = None
+) -> tuple[list[JiraIssue],LiveIngestionResult]:
+    """
+    Ingest issues directly from Jira API using JQL
+
+    Flow:
+    Run this function (scheduled or on-demand)
+
+    The 'since' parameter enables incremental sync:
+        - First run: since=None (fetch all)
+        - Subsequent runs: since=last_sync_timestamp (fetch only changes)
+
+    Args:
+        config: Ingestion configuration
+        client: Optional pre-created API client (creates one if None)
+
+    Returns:
+        Tuple of (list of JiraIssue, LiveIngestionResult)
+    """
+    result = LiveIngestionResult(space_key=config.space_key)
+
+    own_client = client is None
+
+    if own_client:
+        client = JiraAPIClient()
+
+    try:
+        #Build JQL query
+        jql_parts = [f"project = {config.space_key}"]
+        if config.since:
+            jql_parts.append(f'updated >= "{config.since}"')
+        if config.jql_filter:
+            jql_parts.append(f"({config.jql_filter})")
+        jql = " AND ".join(jql_parts) + " ORDER BY updated DESC"
+
+        logger.info("live_ingestion_starting",extra= {"space":config.space_key,"jql":jql})
+
+        #fetch issues
+        raw_issues = client.search_all(jql,max_total=config.max_issues)
+        result.issues_fetched = len(raw_issues)
+
+        #Parse into domain object
+        issues : list[JiraIssue] = []
+        for raw in raw_issues:
+            issue = parse_jira_issue(raw,config.space_key)
+            if issue:
+                issues.append(issue)
+                result.issue_parsed += 1 
+            else:
+                result.issues_skipped += 1
+        result.sync_timestamp = datetime.now(timezone.utc).isoformat()
+
+        logger.info(
+            "live_ingestion_complete",
+            extra={
+                "space": config.space_key,
+                "fetched": result.issues_fetched,
+                "parsed": result.issues_parsed,
+                "skipped": result.issues_skipped,
+            },
+        )
+        return issues,result
+    except Exception as e:
+        result.errors.append(str(e))
+        logger.error("live_ingestion_failed", extra={"space": config.space_key, "error": str(e)})
+        return [], result
+    finally:
+        if own_client and client:
+            client.close()
+
+
+def ingest_all_spaces_live(
+    spaces: Optional[list[str]] = None,
+    since: Optional[str] = None,
+) -> tuple[dict[str, list[JiraIssue]], list[LiveIngestionResult]]:
+    """
+    Ingest all configured spaces from the live Jira API.
+
+    This is the live equivalent of ingest_all_spaces()
+    from loader.py. It creates a single API client and reuses it across
+    all spaces to share the HTTP connection pool.
+
+    Args:
+        spaces: List of space keys. None = use settings.jira.space_list
+        since: ISO datetime string for incremental sync. None = full sync.
+
+    Returns:
+        Tuple of (dict of space->issues, list of results)
+    """
+    if spaces is None:
+        spaces = settings.jira.space_list
+
+    all_issues: dict[str, list[JiraIssue]] = {}
+    all_results: list[LiveIngestionResult] = []
+
+    with JiraAPIClient() as client:
+        # Verify connectivity first
+        if not client.health_check():
+            logger.error("jira_api_health_check_failed")
+            raise ConnectionError("Cannot connect to Jira API. Check credentials.")
+
+        for space in spaces:
+            config = LiveIngestionConfig(space_key=space, since=since)
+            issues, result = ingest_from_jira(config, client=client)
+            all_issues[space] = issues
+            all_results.append(result)
+
+    total = sum(len(v) for v in all_issues.values())
+    logger.info("all_spaces_live_ingested", extra={"spaces": len(all_issues), "total": total})
+    return all_issues, all_results
+            
+
+
+
+
+
         
         
         

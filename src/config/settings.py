@@ -163,9 +163,9 @@ class RAGSettings(BaseSettings):
         RAG_CHUNK_SIZE=1024
         RAG_CHUNK_OVERLAP=128
     """
-    model_config = SettingsConfigDict(prefix = "RAG_",extra = "ingore")
+    model_config = SettingsConfigDict(prefix = "RAG_",extra = "ignore")
 
-    top_K:int = Field(default = 5,ge = 1 , le=20)
+    top_k:int = Field(default = 5,ge = 1 , le=20)
     chunk_size: int = Field(default = 1024, ge = 256,le = 4096)
     chunk_overlap: int = Field(default = 128,ge = 0,le = 512)
     rrf_k:int =  Field(
@@ -266,7 +266,7 @@ class Settings(BaseSettings):
     #allows gradual roolout of capabilities
     # In production, it could be backed by a feature flag service (LaunchDarkly, etc.)
 
-    enable_hybrid_retrieva: bool = Field(
+    enable_hybrid_retrieval: bool = Field(
         default = False,
         description="Use BM25 + dense fusion. False = dense only.",
     )

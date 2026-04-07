@@ -1,10 +1,10 @@
 [project]
-name = "SIG-PO-agent"
+name = "sig-po-agent"
 version = "1.0.0"
 description = "AI agent for product and project management task"
 readme = "README.md"
 license = {text = "MIT"}
-required-python = ">=3.11"
+requires-python = ">=3.11"
 
 # CORE DEPENDENCIES 
 
@@ -34,7 +34,7 @@ dependencies = [
     #Vector DB
     #chromadb for development
     #Swap to managed Pinecone/Weaviate when large scale production
-    "chromadb>=0.5.0,<1.0.0",
+    "chromadb>=1.0.0,<2.0.0",
 
     #Sparse Retrieval
     #BestMatch25 combined with dense (embedding) retrieval via Reciprocal Rank Fusion,
@@ -82,12 +82,13 @@ dev = [
 ]
 eval = [
     # LlamaIndex evaluation modules for measuring RAG quality
-    "llama-index-evaluation>=0.4.0",
+   # "llama-index-evaluation>=0.4.0",
     "ragas>=0.2.0",
 ]
 
 
 #Entry points
+[project.scripts]
 jira-agent = "src.cli:main"
 
 
